@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "obsidian-notes-site",
+	"name": "notes.site",
+	"version": "0.0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "publish to notes.site",
+	"author": "jon.bo",
+	"authorUrl": "https://jon.bo",
+	"fundingUrl": "https://jon.bo",
 	"isDesktopOnly": false
 }
