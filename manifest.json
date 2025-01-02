@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-notes-site",
 	"name": "notes.site",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "publish to notes.site",
 	"author": "jon.bo",
