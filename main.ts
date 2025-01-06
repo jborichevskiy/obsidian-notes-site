@@ -23,6 +23,17 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
+	private debounceTimer: NodeJS.Timeout | null = null;
+
+	private debouncedExportStartPage = (editor: Editor, view: MarkdownView) => {
+		if (this.debounceTimer) {
+			clearTimeout(this.debounceTimer);
+		}
+		
+		this.debounceTimer = setTimeout(() => {
+			this.exportStartPageHtml(editor, view);
+		}, 3000); // 3 second debounce
+	};
 
 	async onload() {
 		await this.loadSettings();
@@ -33,6 +44,24 @@ export default class MyPlugin extends Plugin {
 				this.addMobileScrollButton();
 			})
 		);
+
+		// Register editor change event for START page auto-export
+		this.registerEvent(
+			this.app.workspace.on("editor-change", (editor: Editor, view: MarkdownView) => {
+				if (view?.file?.basename === "START") {
+					this.debouncedExportStartPage(editor, view);
+				}
+			})
+		);
+
+		// Add command for manual export
+		this.addCommand({
+			id: "export-start-page",
+			name: "Export START page to HTML",
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				this.exportStartPageHtml(editor, view);
+			},
+		});
 
 		this.addCommand({
 			id: "write-file",
@@ -224,82 +253,86 @@ export default class MyPlugin extends Plugin {
 			},
 		});
 
-		// Add the new START page export command
-		this.addCommand({
-			id: "export-start-page",
-			name: "Export START page to HTML",
-			editorCallback: async (editor: Editor, view: MarkdownView) => {
-				const file = view?.file;
-				if (!file) return;
+		// Add settings tab
+		this.addSettingTab(new MyPluginSettingTab(this.app, this));
+	}
 
-				// Only proceed if the file is named START
-				if (file.basename !== "START") {
-					new Notice("This command only works on the START page");
-					return;
+	private async exportStartPageHtml(editor: Editor, view: MarkdownView) {
+		const file = view?.file;
+		if (!file) return;
+
+		// Only proceed if the file is named START
+		if (file.basename !== "START") {
+			new Notice("This command only works on the START page");
+			return;
+		}
+
+		// Check if export path is configured
+		if (!this.settings.startPageExportPath) {
+			new Notice(
+				"Please configure the START page export path in settings"
+			);
+			return;
+		}
+
+		// Get file content
+		const content = editor.getDoc().getValue();
+
+		// Convert Obsidian internal links to markdown links with obsidian:// URLs
+		const processedContent = content.replace(
+			/\[\[(.*?)\]\]/g,
+			(match, linkText) => {
+				const encodedPath = encodeURIComponent(linkText);
+				return `[${linkText}](obsidian://open?vault=jonbo-notes-site-sync&file=${encodedPath})`;
+			}
+		);
+
+		// Initialize markdown-it with options
+		const md = markdownit({
+			html: true,
+			breaks: true,
+			linkify: true,
+		});
+
+		// Custom renderer for internal links
+		md.renderer.rules.link_open = (
+			tokens: Token[],
+			idx: number,
+			options: markdownit.Options,
+			env: any,
+			self: any
+		) => {
+			const token = tokens[idx];
+			const hrefIndex = token.attrIndex("href");
+			if (hrefIndex >= 0) {
+				const href = token.attrs![hrefIndex][1];
+				// Add style attribute for dotted underline with transition
+				token.attrPush(['style', 'text-decoration: none; border-bottom: 1px solid rgba(128, 128, 128, 0.6);']);
+				token.attrPush(['onmouseover', `this.style.borderBottom = '2px dotted rgba(128, 128, 128, 0.6)';`]);
+				token.attrPush(['onmouseout', `this.style.borderBottom = '1px solid rgba(128, 128, 128, 0.6)';`]);
+				if (
+					href &&
+					href.startsWith("[[") &&
+					href.endsWith("]]")
+				) {
+					// Extract the link text
+					const linkText = href.slice(2, -2);
+					// Create obsidian URI
+					const obsidianUri = `obsidian://open?vault=jonbo-notes-site-sync&file=${encodeURIComponent(
+						linkText
+					)}`;
+					// Set the href attribute
+					token.attrs![hrefIndex][1] = obsidianUri;
 				}
+			}
+			return self.renderToken(tokens, idx, options);
+		};
 
-				// Check if export path is configured
-				if (!this.settings.startPageExportPath) {
-					new Notice(
-						"Please configure the START page export path in settings"
-					);
-					return;
-				}
+		// Convert markdown to HTML
+		let html = md.render(processedContent);
 
-				// Get file content
-				const content = editor.getDoc().getValue();
-
-				// Convert Obsidian internal links to markdown links with obsidian:// URLs
-				const processedContent = content.replace(
-					/\[\[(.*?)\]\]/g,
-					(match, linkText) => {
-						const encodedPath = encodeURIComponent(linkText);
-						return `[${linkText}](obsidian://open?vault=jonbo-notes-site-sync&file=${encodedPath})`;
-					}
-				);
-
-				// Initialize markdown-it with options
-				const md = markdownit({
-					html: true,
-					breaks: true,
-					linkify: true,
-				});
-
-				// Custom renderer for internal links
-				md.renderer.rules.link_open = (
-					tokens: Token[],
-					idx: number,
-					options: markdownit.Options,
-					env: any,
-					self: any
-				) => {
-					const token = tokens[idx];
-					const hrefIndex = token.attrIndex("href");
-					if (hrefIndex >= 0) {
-						const href = token.attrs![hrefIndex][1];
-						if (
-							href &&
-							href.startsWith("[[") &&
-							href.endsWith("]]")
-						) {
-							// Extract the link text
-							const linkText = href.slice(2, -2);
-							// Create obsidian URI
-							const obsidianUri = `obsidian://open?vault=jonbo-notes-site-sync&file=${encodeURIComponent(
-								linkText
-							)}`;
-							// Set the href attribute
-							token.attrs![hrefIndex][1] = obsidianUri;
-						}
-					}
-					return self.renderToken(tokens, idx, options);
-				};
-
-				// Convert markdown to HTML
-				let html = md.render(processedContent);
-
-				// Add basic styling
-				html = `
+		// Add basic styling
+		html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -406,27 +439,22 @@ export default class MyPlugin extends Plugin {
 </body>
 </html>`;
 
-				try {
-					// Remove any literal backslashes from the path
-					const cleanPath = this.settings.startPageExportPath.replace(
-						/\\/g,
-						""
-					);
+		try {
+			// Remove any literal backslashes from the path
+			const cleanPath = this.settings.startPageExportPath.replace(
+				/\\/g,
+				""
+			);
 
-					// Write the file
-					await fs.writeFile(cleanPath, html, "utf8");
-					new Notice("START page exported successfully");
-				} catch (error) {
-					console.error("Error exporting START page:", error);
-					new Notice(
-						"Error exporting START page. Check console for details."
-					);
-				}
-			},
-		});
-
-		// Add settings tab
-		this.addSettingTab(new MyPluginSettingTab(this.app, this));
+			// Write the file
+			await fs.writeFile(cleanPath, html, "utf8");
+			new Notice("START page exported successfully");
+		} catch (error) {
+			console.error("Error exporting START page:", error);
+			new Notice(
+				"Error exporting START page. Check console for details."
+			);
+		}
 	}
 
 	async onunload() {
@@ -435,7 +463,7 @@ export default class MyPlugin extends Plugin {
 
 	private addMobileScrollButton() {
 		// Only proceed if we're on mobile
-		if (!this.app.isMobile) return;
+		// if (!this.app.isMobile) return;
 
 		// Find the mobile toolbar
 		const mobileToolbar = document.querySelector('.mobile-toolbar');
@@ -461,7 +489,7 @@ export default class MyPlugin extends Plugin {
 		// Add click handler
 		button.addEventListener('click', () => {
 			const activeLeaf = this.app.workspace.activeLeaf;
-			if (activeLeaf?.view?.editor) {
+			if (activeLeaf?.view instanceof MarkdownView) {
 				const editor = activeLeaf.view.editor;
 				const lastLine = editor.lastLine();
 				editor.scrollIntoView({from: {line: lastLine, ch: 0}, to: {line: lastLine, ch: 0}}, true);
