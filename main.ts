@@ -7,6 +7,7 @@ import { Token } from "markdown-it";
 interface MyPluginSettings {
 	mySetting: string;
 	startPageExportPath: string;
+	progressBarEnabled: boolean;
 }
 
 interface Frontmatter {
@@ -19,6 +20,7 @@ interface Frontmatter {
 const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: "default",
 	startPageExportPath: "",
+	progressBarEnabled: false,
 };
 
 export default class MyPlugin extends Plugin {
@@ -343,6 +345,36 @@ export default class MyPlugin extends Plugin {
             color-scheme: light dark;
         }
 
+		.progress-bar {
+			position: fixed;
+			top: 0;
+			left: 0;
+			height: 1.5px;
+			background-color: rgba(147, 112, 219, 0.6);
+			width: 0%;
+			transition: width 100ms cubic-bezier(0.4, 0, 0.2, 1);
+			z-index: 1000;
+		}
+
+		.progress-toggle {
+			position: fixed;
+			bottom: 20px;
+			left: 20px;
+			padding: 8px 12px;
+			background-color: rgba(147, 112, 219, 0.1);
+			border: 1px solid rgba(147, 112, 219, 0.2);
+			border-radius: 4px;
+			color: rgba(147, 112, 219, 0.8);
+			cursor: pointer;
+			font-size: 12px;
+			transition: all 0.2s ease;
+			z-index: 1000;
+		}
+
+		.progress-toggle:hover {
+			background-color: rgba(147, 112, 219, 0.2);
+		}
+
 		img[src*="weather.cgi"] {
 			filter: brightness(0.82) invert(0.92);
 			display: block;
@@ -433,6 +465,83 @@ export default class MyPlugin extends Plugin {
             }
         }
     </style>
+	<script>
+		// Progress bar animation
+		document.addEventListener('DOMContentLoaded', () => {
+			const progressBar = document.createElement('div');
+			progressBar.className = 'progress-bar';
+			document.body.appendChild(progressBar);
+
+			const toggle = document.createElement('button');
+			toggle.className = 'progress-toggle';
+			toggle.textContent = 'breath timer';
+			document.body.appendChild(toggle);
+
+			let enabled = localStorage.getItem('progressEnabled') === 'true';
+			let animation = null;
+
+			const updateProgressBar = () => {
+				if (enabled) {
+					startAnimation();
+				} else {
+					stopAnimation();
+				}
+			};
+
+			const startAnimation = () => {
+				if (animation) return;
+
+				const duration = 5500;
+				const startTime = Date.now();
+
+				const animate = () => {
+					const elapsed = (Date.now() - startTime) % (duration * 2);
+					const halfCycle = elapsed < duration;
+					let progress = (elapsed % duration) / duration;
+
+					// Smooth out the transitions by adjusting the progress curve
+					if (halfCycle) {
+						// Ease in more gradually at the start
+						progress = progress * 0.97 + 0.03;
+					} else {
+						// Keep the smooth transition on the way down
+						progress = 1 - progress;
+					}
+
+					// Apply enhanced easing for more pronounced breathing effect
+					const easeProgress = easeInOutQuint(progress);
+					progressBar.style.width = \`\${easeProgress * 100}%\`;
+					animation = requestAnimationFrame(animate);
+				};
+
+				animation = requestAnimationFrame(animate);
+			};
+
+			const stopAnimation = () => {
+				if (animation) {
+					cancelAnimationFrame(animation);
+					animation = null;
+				}
+				progressBar.style.width = '0%';
+			};
+
+			// Enhanced easing function for steeper edges and slower middle
+			const easeInOutQuint = (x) => {
+				return x < 0.5
+					? 16 * x * x * x * x * x
+					: 1 - Math.pow(-2 * x + 2, 5) / 2;
+			};
+
+			toggle.addEventListener('click', () => {
+				enabled = !enabled;
+				localStorage.setItem('progressEnabled', enabled);
+				updateProgressBar();
+			});
+
+			// Initialize state
+			updateProgressBar();
+		});
+	</script>
 </head>
 <body>
     ${html}
@@ -455,10 +564,6 @@ export default class MyPlugin extends Plugin {
 				"Error exporting START page. Check console for details."
 			);
 		}
-	}
-
-	async onunload() {
-		console.log("unloading plugin");
 	}
 
 	private addMobileScrollButton() {
@@ -592,6 +697,18 @@ class MyPluginSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.startPageExportPath)
 					.onChange(async (value) => {
 						this.plugin.settings.startPageExportPath = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Progress Bar")
+			.setDesc("Enable or disable the progress bar")
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.progressBarEnabled)
+					.onChange(async (value) => {
+						this.plugin.settings.progressBarEnabled = value;
 						await this.plugin.saveSettings();
 					})
 			);
