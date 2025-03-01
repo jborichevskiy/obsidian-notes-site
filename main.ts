@@ -3,11 +3,14 @@ import * as fs from "fs/promises";
 import { App, PluginSettingTab, Setting } from "obsidian";
 import markdownit from "markdown-it";
 import { Token } from "markdown-it";
+import { EditorView, Decoration, ViewPlugin, ViewUpdate, DecorationSet } from "@codemirror/view";
+import { RangeSetBuilder } from "@codemirror/state";
 
 interface MyPluginSettings {
 	mySetting: string;
 	startPageExportPath: string;
 	progressBarEnabled: boolean;
+	dotModeEnabled: boolean;
 }
 
 interface Frontmatter {
@@ -21,11 +24,14 @@ const DEFAULT_SETTINGS: MyPluginSettings = {
 	mySetting: "default",
 	startPageExportPath: "",
 	progressBarEnabled: false,
+	dotModeEnabled: false,
 };
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 	private debounceTimer: NodeJS.Timeout | null = null;
+	private dotModeRibbonIcon: HTMLElement | null = null;
+	private static instance: MyPlugin;
 
 	private debouncedExportStartPage = (editor: Editor, view: MarkdownView) => {
 		if (this.debounceTimer) {
@@ -38,12 +44,100 @@ export default class MyPlugin extends Plugin {
 	};
 
 	async onload() {
+		MyPlugin.instance = this;
 		await this.loadSettings();
+
+		// Add ribbon icon for dot mode toggle
+		this.dotModeRibbonIcon = this.addRibbonIcon(
+			'eye', 
+			'Toggle Dot Mode',
+			(evt: MouseEvent) => {
+				this.toggleDotMode();
+			}
+		);
+
+		// Register markdown post processor for dot mode
+		this.registerMarkdownPostProcessor((el, ctx) => {
+			if (this.settings.dotModeEnabled) {
+				this.applyDotMode(el);
+			}
+		});
+
+		// Register editor extension for source mode
+		this.registerEditorExtension([
+			ViewPlugin.fromClass(class {
+				decorations: DecorationSet;
+
+				constructor(view: EditorView) {
+					this.decorations = this.buildDecorations(view);
+				}
+
+				update(update: ViewUpdate) {
+					if (update.docChanged || update.viewportChanged) {
+						this.decorations = this.buildDecorations(update.view);
+					}
+				}
+
+				buildDecorations(view: EditorView) {
+					if (!MyPlugin.instance?.settings?.dotModeEnabled) {
+						return Decoration.none;
+					}
+
+					const builder = new RangeSetBuilder<Decoration>();
+					
+					// Iterate through the visible content
+					for (const { from, to } of view.visibleRanges) {
+						const text = view.state.doc.sliceString(from, to);
+						let pos = 0;
+						
+						while (pos < text.length) {
+							const char = text[pos];
+							const absPos = from + pos;
+
+							if (char === ' ') {
+								// Style spaces differently
+								builder.add(
+									absPos, 
+									absPos + 1,
+									Decoration.mark({
+										class: "cm-dot-mode-space"
+									})
+								);
+							} else {
+								// Style regular characters as dots
+								builder.add(
+									absPos,
+									absPos + 1,
+									Decoration.mark({
+										class: "cm-dot-mode-char"
+									})
+								);
+							}
+							pos++;
+						}
+					}
+					
+					return builder.finish();
+				}
+			}, {
+				decorations: v => v.decorations
+			})
+		]);
+
+		// Add command for toggling dot mode
+		this.addCommand({
+			id: 'toggle-dot-mode',
+			name: 'Toggle Dot Mode',
+			callback: () => {
+				this.toggleDotMode();
+			}
+		});
 
 		// Register the mobile toolbar button when layout changes
 		this.registerEvent(
 			this.app.workspace.on("layout-change", () => {
 				this.addMobileScrollButton();
+				this.addMobileDotModeButton();
 			})
 		);
 
@@ -463,8 +557,7 @@ export default class MyPlugin extends Plugin {
             input[type="checkbox"] {
                 margin-right: 0.5em;
             }
-        }
-    </style>
+        </style>
 	<script>
 		// Progress bar animation
 		document.addEventListener('DOMContentLoaded', () => {
@@ -602,6 +695,34 @@ export default class MyPlugin extends Plugin {
 		});
 	}
 
+	private addMobileDotModeButton() {
+		// Find the mobile toolbar
+		const mobileToolbar = document.querySelector('.mobile-toolbar');
+		if (!mobileToolbar) return;
+
+		// Remove existing button if it exists
+		const existingButton = mobileToolbar.querySelector('.dot-mode-button');
+		if (existingButton) {
+			existingButton.remove();
+		}
+
+		// Create the button
+		const button = mobileToolbar.createEl('div', {
+			cls: ['mobile-toolbar-button', 'dot-mode-button'],
+			attr: {
+				'aria-label': 'Toggle Dot Mode'
+			}
+		});
+
+		// Add icon (using Obsidian's eye icon)
+		button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+
+		// Add click handler
+		button.addEventListener('click', () => {
+			this.toggleDotMode();
+		});
+	}
+
 	filenameToTitle(filename: string): string {
 		// Remove file extension
 		let title = filename.replace(/\.md$/, "");
@@ -673,6 +794,124 @@ export default class MyPlugin extends Plugin {
 
 	async saveSettings() {
 		await this.saveData(this.settings);
+	}
+
+	// Toggle dot mode on/off
+	toggleDotMode() {
+		// Toggle the setting
+		this.settings.dotModeEnabled = !this.settings.dotModeEnabled;
+		
+		// Force refresh of all views
+		this.app.workspace.iterateAllLeaves(leaf => {
+			if (leaf.view instanceof MarkdownView) {
+				// Force editor to update decorations by simulating a change
+				const editorView = (leaf.view.editor as any).cm as EditorView;
+				const doc = editorView.state.doc;
+				editorView.dispatch({
+					changes: {from: 0, to: doc.length, insert: doc.sliceString(0, doc.length)}
+				});
+
+				// Rerender preview if in preview mode
+				if (leaf.view.getMode() === 'preview') {
+					leaf.view.previewMode.rerender(true);
+				}
+			}
+		});
+
+		// Update UI elements
+		const rootEl = document.body;
+		if (this.settings.dotModeEnabled) {
+			rootEl.classList.add('dot-mode-enabled');
+			new Notice('Dot mode enabled');
+			
+			if (this.dotModeRibbonIcon) {
+				this.dotModeRibbonIcon.addClass('is-active');
+			}
+			
+			const mobileButton = document.querySelector('.dot-mode-button');
+			if (mobileButton) {
+				mobileButton.addClass('is-active');
+			}
+		} else {
+			rootEl.classList.remove('dot-mode-enabled');
+			new Notice('Dot mode disabled');
+			
+			if (this.dotModeRibbonIcon) {
+				this.dotModeRibbonIcon.removeClass('is-active');
+			}
+			
+			const mobileButton = document.querySelector('.dot-mode-button');
+			if (mobileButton) {
+				mobileButton.removeClass('is-active');
+			}
+		}
+
+		// Save settings
+		this.saveSettings();
+	}
+
+	private applyDotMode(element: HTMLElement) {
+		const textNodes = this.getTextNodes(element);
+		textNodes.forEach(node => {
+			const span = document.createElement('span');
+			span.classList.add('dot-mode-text');
+			
+			// Create a separate span for each character
+			const text = node.textContent || '';
+			text.split('').forEach(char => {
+				const charSpan = document.createElement('span');
+				if (char === ' ') {
+					charSpan.classList.add('dot-mode-space');
+					charSpan.textContent = char;
+				} else {
+					charSpan.classList.add('dot-mode-char');
+					charSpan.textContent = char;
+				}
+				span.appendChild(charSpan);
+			});
+			
+			node.parentNode?.replaceChild(span, node);
+		});
+	}
+
+	private getTextNodes(node: Node): Text[] {
+		const textNodes: Text[] = [];
+		const walker = document.createTreeWalker(
+			node,
+			NodeFilter.SHOW_TEXT,
+			{
+				acceptNode: function(node) {
+					// Skip nodes that are part of a code block
+					if (node.parentElement?.closest('pre, code')) {
+						return NodeFilter.FILTER_REJECT;
+					}
+					// Skip empty or whitespace-only nodes
+					if (!node.textContent || !node.textContent.trim()) {
+						return NodeFilter.FILTER_REJECT;
+					}
+					return NodeFilter.FILTER_ACCEPT;
+				}
+			}
+		);
+
+		let currentNode: Node | null;
+		while ((currentNode = walker.nextNode()) !== null) {
+			textNodes.push(currentNode as Text);
+		}
+		return textNodes;
+	}
+
+	onunload() {
+		// Clean up dot mode if enabled
+		if (this.settings.dotModeEnabled) {
+			document.body.classList.remove('dot-mode-enabled');
+		}
+		
+		// Remove mobile dot mode button if it exists
+		const mobileButton = document.querySelector('.dot-mode-button');
+		if (mobileButton) {
+			mobileButton.remove();
+		}
 	}
 }
 

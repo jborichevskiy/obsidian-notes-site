@@ -6,3 +6,46 @@ available in the app when your plugin is enabled.
 If your plugin does not need CSS, delete this file.
 
 */
+
+/* Dot Mode styling - Preview mode */
+.dot-mode-enabled .dot-mode-char {
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  opacity: 0.5;
+}
+
+/* Visible space styling - Preview mode */
+.dot-mode-enabled .dot-mode-space {
+  -webkit-text-security: none !important;
+  text-security: none !important;
+  background-color: rgba(128, 128, 128, 0.2) !important;
+  border-radius: 2px;
+  margin: 0 1px;
+}
+
+/* Dot Mode styling - Source mode */
+.cm-dot-mode-char {
+  -webkit-text-security: disc !important;
+  text-security: disc !important;
+  opacity: 0.5 !important;
+  font-family: monospace !important;
+}
+
+/* Make spaces visible in source mode */
+.cm-dot-mode-space {
+  display: inline-block !important;
+  width: 0.5em !important;
+  height: 1em !important;
+  background-color: rgba(128, 128, 128, 0.2) !important;
+  border-radius: 2px !important;
+  margin: 0 1px !important;
+  -webkit-text-security: none !important;
+  text-security: none !important;
+}
+
+/* Active state styling for buttons */
+.dot-mode-button.is-active,
+.side-dock-ribbon-action.is-active[aria-label="Toggle Dot Mode"] {
+  color: var(--text-accent);
+  background-color: var(--background-modifier-hover);
+}
