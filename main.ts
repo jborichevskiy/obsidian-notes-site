@@ -3,7 +3,13 @@ import * as fs from "fs/promises";
 import { App, PluginSettingTab, Setting } from "obsidian";
 import markdownit from "markdown-it";
 import { Token } from "markdown-it";
-import { EditorView, Decoration, ViewPlugin, ViewUpdate, DecorationSet } from "@codemirror/view";
+import {
+	EditorView,
+	Decoration,
+	ViewPlugin,
+	ViewUpdate,
+	DecorationSet,
+} from "@codemirror/view";
 import { RangeSetBuilder } from "@codemirror/state";
 
 interface MyPluginSettings {
@@ -37,7 +43,7 @@ export default class MyPlugin extends Plugin {
 		if (this.debounceTimer) {
 			clearTimeout(this.debounceTimer);
 		}
-		
+
 		this.debounceTimer = setTimeout(() => {
 			this.exportStartPageHtml(editor, view);
 		}, 3000); // 3 second debounce
@@ -49,8 +55,8 @@ export default class MyPlugin extends Plugin {
 
 		// Add ribbon icon for dot mode toggle
 		this.dotModeRibbonIcon = this.addRibbonIcon(
-			'eye', 
-			'Toggle Dot Mode',
+			"eye",
+			"Toggle Dot Mode",
 			(evt: MouseEvent) => {
 				this.toggleDotMode();
 			}
@@ -64,73 +70,100 @@ export default class MyPlugin extends Plugin {
 		});
 
 		// Register editor extension for source mode
+		// Register editor extension for source mode
 		this.registerEditorExtension([
-			ViewPlugin.fromClass(class {
-				decorations: DecorationSet;
+			ViewPlugin.fromClass(
+				class {
+					decorations: DecorationSet;
 
-				constructor(view: EditorView) {
-					this.decorations = this.buildDecorations(view);
-				}
-
-				update(update: ViewUpdate) {
-					if (update.docChanged || update.viewportChanged) {
-						this.decorations = this.buildDecorations(update.view);
-					}
-				}
-
-				buildDecorations(view: EditorView) {
-					if (!MyPlugin.instance?.settings?.dotModeEnabled) {
-						return Decoration.none;
+					constructor(view: EditorView) {
+						this.decorations = this.buildDecorations(view);
 					}
 
-					const builder = new RangeSetBuilder<Decoration>();
-					
-					// Iterate through the visible content
-					for (const { from, to } of view.visibleRanges) {
-						const text = view.state.doc.sliceString(from, to);
-						let pos = 0;
-						
-						while (pos < text.length) {
-							const char = text[pos];
-							const absPos = from + pos;
-
-							if (char === ' ') {
-								// Style spaces differently
-								builder.add(
-									absPos, 
-									absPos + 1,
-									Decoration.mark({
-										class: "cm-dot-mode-space"
-									})
-								);
-							} else {
-								// Style regular characters as dots
-								builder.add(
-									absPos,
-									absPos + 1,
-									Decoration.mark({
-										class: "cm-dot-mode-char"
-									})
-								);
-							}
-							pos++;
+					update(update: ViewUpdate) {
+						if (update.docChanged || update.viewportChanged) {
+							this.decorations = this.buildDecorations(
+								update.view
+							);
 						}
 					}
-					
-					return builder.finish();
+
+					buildDecorations(view: EditorView) {
+						if (!MyPlugin.instance?.settings?.dotModeEnabled) {
+							return Decoration.none;
+						}
+
+						const builder = new RangeSetBuilder<Decoration>();
+
+						// Array of punctuation characters to show
+						const punctuationToShow = [
+							".",
+							",",
+							'"',
+							":",
+							"-",
+							";",
+							"!",
+							"?",
+						];
+
+						// Iterate through the visible content
+						for (const { from, to } of view.visibleRanges) {
+							const text = view.state.doc.sliceString(from, to);
+							let pos = 0;
+
+							while (pos < text.length) {
+								const char = text[pos];
+								const absPos = from + pos;
+
+								// First check if it's a punctuation mark we want to show
+								if (punctuationToShow.includes(char)) {
+									builder.add(
+										absPos,
+										absPos + 1,
+										Decoration.mark({
+											class: "cm-dot-mode-punct",
+										})
+									);
+								} else if (char === " ") {
+									// Style spaces differently
+									builder.add(
+										absPos,
+										absPos + 1,
+										Decoration.mark({
+											class: "cm-dot-mode-space",
+										})
+									);
+								} else {
+									// Style regular characters as dots
+									builder.add(
+										absPos,
+										absPos + 1,
+										Decoration.mark({
+											class: "cm-dot-mode-char",
+										})
+									);
+								}
+								pos++;
+							}
+						}
+
+						return builder.finish();
+					}
+				},
+				{
+					decorations: (v) => v.decorations,
 				}
-			}, {
-				decorations: v => v.decorations
-			})
+			),
 		]);
 
 		// Add command for toggling dot mode
 		this.addCommand({
-			id: 'toggle-dot-mode',
-			name: 'Toggle Dot Mode',
+			id: "toggle-dot-mode",
+			name: "Toggle Dot Mode",
 			callback: () => {
 				this.toggleDotMode();
-			}
+			},
 		});
 
 		// Register the mobile toolbar button when layout changes
@@ -143,11 +176,14 @@ export default class MyPlugin extends Plugin {
 
 		// Register editor change event for START page auto-export
 		this.registerEvent(
-			this.app.workspace.on("editor-change", (editor: Editor, view: MarkdownView) => {
-				if (view?.file?.basename === "START") {
-					this.debouncedExportStartPage(editor, view);
+			this.app.workspace.on(
+				"editor-change",
+				(editor: Editor, view: MarkdownView) => {
+					if (view?.file?.basename === "START") {
+						this.debouncedExportStartPage(editor, view);
+					}
 				}
-			})
+			)
 		);
 
 		// Add command for manual export
@@ -403,14 +439,19 @@ export default class MyPlugin extends Plugin {
 			if (hrefIndex >= 0) {
 				const href = token.attrs![hrefIndex][1];
 				// Add style attribute for dotted underline with transition
-				token.attrPush(['style', 'text-decoration: none; border-bottom: 1px solid rgba(128, 128, 128, 0.6);']);
-				token.attrPush(['onmouseover', `this.style.borderBottom = '2px dotted rgba(128, 128, 128, 0.6)';`]);
-				token.attrPush(['onmouseout', `this.style.borderBottom = '1px solid rgba(128, 128, 128, 0.6)';`]);
-				if (
-					href &&
-					href.startsWith("[[") &&
-					href.endsWith("]]")
-				) {
+				token.attrPush([
+					"style",
+					"text-decoration: none; border-bottom: 1px solid rgba(128, 128, 128, 0.6);",
+				]);
+				token.attrPush([
+					"onmouseover",
+					`this.style.borderBottom = '2px dotted rgba(128, 128, 128, 0.6)';`,
+				]);
+				token.attrPush([
+					"onmouseout",
+					`this.style.borderBottom = '1px solid rgba(128, 128, 128, 0.6)';`,
+				]);
+				if (href && href.startsWith("[[") && href.endsWith("]]")) {
 					// Extract the link text
 					const linkText = href.slice(2, -2);
 					// Create obsidian URI
@@ -664,61 +705,69 @@ export default class MyPlugin extends Plugin {
 		// if (!this.app.isMobile) return;
 
 		// Find the mobile toolbar
-		const mobileToolbar = document.querySelector('.mobile-toolbar');
+		const mobileToolbar = document.querySelector(".mobile-toolbar");
 		if (!mobileToolbar) return;
 
 		// Remove existing button if it exists
-		const existingButton = mobileToolbar.querySelector('.scroll-to-bottom-button');
+		const existingButton = mobileToolbar.querySelector(
+			".scroll-to-bottom-button"
+		);
 		if (existingButton) {
 			existingButton.remove();
 		}
 
 		// Create the button
-		const button = mobileToolbar.createEl('div', {
-			cls: ['mobile-toolbar-button', 'scroll-to-bottom-button'],
+		const button = mobileToolbar.createEl("div", {
+			cls: ["mobile-toolbar-button", "scroll-to-bottom-button"],
 			attr: {
-				'aria-label': 'Scroll to Bottom'
-			}
+				"aria-label": "Scroll to Bottom",
+			},
 		});
 
 		// Add icon (using Obsidian's down-arrow icon)
 		button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>`;
 
 		// Add click handler
-		button.addEventListener('click', () => {
+		button.addEventListener("click", () => {
 			const activeLeaf = this.app.workspace.activeLeaf;
 			if (activeLeaf?.view instanceof MarkdownView) {
 				const editor = activeLeaf.view.editor;
 				const lastLine = editor.lastLine();
-				editor.scrollIntoView({from: {line: lastLine, ch: 0}, to: {line: lastLine, ch: 0}}, true);
+				editor.scrollIntoView(
+					{
+						from: { line: lastLine, ch: 0 },
+						to: { line: lastLine, ch: 0 },
+					},
+					true
+				);
 			}
 		});
 	}
 
 	private addMobileDotModeButton() {
 		// Find the mobile toolbar
-		const mobileToolbar = document.querySelector('.mobile-toolbar');
+		const mobileToolbar = document.querySelector(".mobile-toolbar");
 		if (!mobileToolbar) return;
 
 		// Remove existing button if it exists
-		const existingButton = mobileToolbar.querySelector('.dot-mode-button');
+		const existingButton = mobileToolbar.querySelector(".dot-mode-button");
 		if (existingButton) {
 			existingButton.remove();
 		}
 
 		// Create the button
-		const button = mobileToolbar.createEl('div', {
-			cls: ['mobile-toolbar-button', 'dot-mode-button'],
+		const button = mobileToolbar.createEl("div", {
+			cls: ["mobile-toolbar-button", "dot-mode-button"],
 			attr: {
-				'aria-label': 'Toggle Dot Mode'
-			}
+				"aria-label": "Toggle Dot Mode",
+			},
 		});
 
 		// Add icon (using Obsidian's eye icon)
 		button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="svg-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
 		// Add click handler
-		button.addEventListener('click', () => {
+		button.addEventListener("click", () => {
 			this.toggleDotMode();
 		});
 	}
@@ -800,19 +849,23 @@ export default class MyPlugin extends Plugin {
 	toggleDotMode() {
 		// Toggle the setting
 		this.settings.dotModeEnabled = !this.settings.dotModeEnabled;
-		
+
 		// Force refresh of all views
-		this.app.workspace.iterateAllLeaves(leaf => {
+		this.app.workspace.iterateAllLeaves((leaf) => {
 			if (leaf.view instanceof MarkdownView) {
 				// Force editor to update decorations by simulating a change
 				const editorView = (leaf.view.editor as any).cm as EditorView;
 				const doc = editorView.state.doc;
 				editorView.dispatch({
-					changes: {from: 0, to: doc.length, insert: doc.sliceString(0, doc.length)}
+					changes: {
+						from: 0,
+						to: doc.length,
+						insert: doc.sliceString(0, doc.length),
+					},
 				});
 
 				// Rerender preview if in preview mode
-				if (leaf.view.getMode() === 'preview') {
+				if (leaf.view.getMode() === "preview") {
 					leaf.view.previewMode.rerender(true);
 				}
 			}
@@ -821,28 +874,28 @@ export default class MyPlugin extends Plugin {
 		// Update UI elements
 		const rootEl = document.body;
 		if (this.settings.dotModeEnabled) {
-			rootEl.classList.add('dot-mode-enabled');
-			new Notice('Dot mode enabled');
-			
+			rootEl.classList.add("dot-mode-enabled");
+			new Notice("Dot mode enabled");
+
 			if (this.dotModeRibbonIcon) {
-				this.dotModeRibbonIcon.addClass('is-active');
+				this.dotModeRibbonIcon.addClass("is-active");
 			}
-			
-			const mobileButton = document.querySelector('.dot-mode-button');
+
+			const mobileButton = document.querySelector(".dot-mode-button");
 			if (mobileButton) {
-				mobileButton.addClass('is-active');
+				mobileButton.addClass("is-active");
 			}
 		} else {
-			rootEl.classList.remove('dot-mode-enabled');
-			new Notice('Dot mode disabled');
-			
+			rootEl.classList.remove("dot-mode-enabled");
+			new Notice("Dot mode disabled");
+
 			if (this.dotModeRibbonIcon) {
-				this.dotModeRibbonIcon.removeClass('is-active');
+				this.dotModeRibbonIcon.removeClass("is-active");
 			}
-			
-			const mobileButton = document.querySelector('.dot-mode-button');
+
+			const mobileButton = document.querySelector(".dot-mode-button");
 			if (mobileButton) {
-				mobileButton.removeClass('is-active');
+				mobileButton.removeClass("is-active");
 			}
 		}
 
@@ -852,47 +905,43 @@ export default class MyPlugin extends Plugin {
 
 	private applyDotMode(element: HTMLElement) {
 		const textNodes = this.getTextNodes(element);
-		textNodes.forEach(node => {
-			const span = document.createElement('span');
-			span.classList.add('dot-mode-text');
-			
+		textNodes.forEach((node) => {
+			const span = document.createElement("span");
+			span.classList.add("dot-mode-text");
+
 			// Create a separate span for each character
-			const text = node.textContent || '';
-			text.split('').forEach(char => {
-				const charSpan = document.createElement('span');
-				if (char === ' ') {
-					charSpan.classList.add('dot-mode-space');
+			const text = node.textContent || "";
+			text.split("").forEach((char) => {
+				const charSpan = document.createElement("span");
+				if (char === " ") {
+					charSpan.classList.add("dot-mode-space");
 					charSpan.textContent = char;
 				} else {
-					charSpan.classList.add('dot-mode-char');
+					charSpan.classList.add("dot-mode-char");
 					charSpan.textContent = char;
 				}
 				span.appendChild(charSpan);
 			});
-			
+
 			node.parentNode?.replaceChild(span, node);
 		});
 	}
 
 	private getTextNodes(node: Node): Text[] {
 		const textNodes: Text[] = [];
-		const walker = document.createTreeWalker(
-			node,
-			NodeFilter.SHOW_TEXT,
-			{
-				acceptNode: function(node) {
-					// Skip nodes that are part of a code block
-					if (node.parentElement?.closest('pre, code')) {
-						return NodeFilter.FILTER_REJECT;
-					}
-					// Skip empty or whitespace-only nodes
-					if (!node.textContent || !node.textContent.trim()) {
-						return NodeFilter.FILTER_REJECT;
-					}
-					return NodeFilter.FILTER_ACCEPT;
+		const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+			acceptNode: function (node) {
+				// Skip nodes that are part of a code block
+				if (node.parentElement?.closest("pre, code")) {
+					return NodeFilter.FILTER_REJECT;
 				}
-			}
-		);
+				// Skip empty or whitespace-only nodes
+				if (!node.textContent || !node.textContent.trim()) {
+					return NodeFilter.FILTER_REJECT;
+				}
+				return NodeFilter.FILTER_ACCEPT;
+			},
+		});
 
 		let currentNode: Node | null;
 		while ((currentNode = walker.nextNode()) !== null) {
@@ -904,11 +953,11 @@ export default class MyPlugin extends Plugin {
 	onunload() {
 		// Clean up dot mode if enabled
 		if (this.settings.dotModeEnabled) {
-			document.body.classList.remove('dot-mode-enabled');
+			document.body.classList.remove("dot-mode-enabled");
 		}
-		
+
 		// Remove mobile dot mode button if it exists
-		const mobileButton = document.querySelector('.dot-mode-button');
+		const mobileButton = document.querySelector(".dot-mode-button");
 		if (mobileButton) {
 			mobileButton.remove();
 		}

@@ -7,41 +7,44 @@ If your plugin does not need CSS, delete this file.
 
 */
 
+/* Common styles for spaces and punctuation */
+.dot-mode-enabled .dot-mode-space,
+.dot-mode-enabled .dot-mode-punct {
+    -webkit-text-security: none !important;
+    text-security: none !important;
+    background-color: rgba(128, 128, 128, 0.2) !important;
+    border-radius: 2px;
+    margin: 0 1px;
+}
+
 /* Dot Mode styling - Preview mode */
 .dot-mode-enabled .dot-mode-char {
-  -webkit-text-security: disc !important;
-  text-security: disc !important;
-  opacity: 0.5;
+    -webkit-text-security: disc !important;
+    text-security: disc !important;
+    opacity: 0.5;
 }
 
-/* Visible space styling - Preview mode */
-.dot-mode-enabled .dot-mode-space {
-  -webkit-text-security: none !important;
-  text-security: none !important;
-  background-color: rgba(128, 128, 128, 0.2) !important;
-  border-radius: 2px;
-  margin: 0 1px;
-}
-
-/* Dot Mode styling - Source mode */
+/* Source mode styling */
 .cm-dot-mode-char {
-  -webkit-text-security: disc !important;
-  text-security: disc !important;
-  opacity: 0.5 !important;
-  font-family: monospace !important;
+    -webkit-text-security: disc !important;
+    text-security: disc !important;
+    opacity: 0.5 !important;
+    font-family: monospace !important;
 }
 
-/* Make spaces visible in source mode */
-.cm-dot-mode-space {
-  display: inline-block !important;
-  width: 0.5em !important;
-  height: 1em !important;
-  background-color: rgba(128, 128, 128, 0.2) !important;
-  border-radius: 2px !important;
-  margin: 0 1px !important;
-  -webkit-text-security: none !important;
-  text-security: none !important;
+/* Make spaces and punctuation visible in source mode */
+.cm-dot-mode-space,
+.cm-dot-mode-punct {
+    display: inline-block !important;
+    width: 0.5em !important;
+    height: 1em !important;
+    /* background-color: rgba(128, 128, 128, 0.2) !important; */
+    border-radius: 2px !important;
+    margin: 0 1px !important;
+    -webkit-text-security: none !important;
+    text-security: none !important;
 }
+
 
 /* Active state styling for buttons */
 .dot-mode-button.is-active,
