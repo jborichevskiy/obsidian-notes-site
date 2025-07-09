@@ -220,16 +220,6 @@ export default class MyPlugin extends Plugin {
 				let content = editor.getDoc().getValue();
 
 				const frontmatter = this.getFrontmatter(content);
-				if (
-					!frontmatter ||
-					!frontmatter.tags ||
-					!frontmatter.tags.includes("#publish")
-				) {
-					console.log(
-						"no #publish tag in frontmatter detected, skipping"
-					);
-					return;
-				}
 
 				// Check if frontmatter exists and has a date
 				if (!frontmatter || !frontmatter.date) {
@@ -253,58 +243,68 @@ export default class MyPlugin extends Plugin {
 					);
 				}
 
-				// Handle images
-				const imageRegex = /!\[\[(.*?)\]\]/g;
-				const matches = content.matchAll(imageRegex);
+				// Handle images with captions
+				const lines = content.split('\n');
+				const processedLines: string[] = [];
+				let i = 0;
+				
+				while (i < lines.length) {
+					const line = lines[i];
+					const imageMatch = line.match(/!\[\[(.*?)\]\]/);
+					
+					if (imageMatch) {
+						const imageName = imageMatch[1];
+						const sourceFile = this.app.vault.getAbstractFileByPath(imageName);
+						
+						if (sourceFile instanceof TFile) {
+							const vaultPath = (this.app.vault.adapter as any).basePath;
+							const sourcePath = `${vaultPath}/${sourceFile.path}`;
+							const destPath = `/Users/jonbo/Github/jborichevskiy/up-and-to-the-right/static/${imageName}`;
 
-				for (const match of matches) {
-					const imageName = match[1];
-					const sourceFile =
-						this.app.vault.getAbstractFileByPath(imageName);
-					if (sourceFile instanceof TFile) {
-						const sourcePath =
-							this.app.vault.getResourcePath(sourceFile);
-						const destPath = `/Users/jonbo/Github/jborichevskiy/up-and-to-the-right/static/${imageName}`;
+							const exists = await this.fileExistsWithSameSize(
+								sourcePath,
+								destPath
+							);
 
-						const exists = await this.fileExistsWithSameSize(
-							sourcePath,
-							destPath
-						);
+							try {
+								if (!exists) {
+									await fs.copyFile(sourcePath, destPath);
+									console.log(`Copied image: ${imageName}`);
+								}
 
-						try {
-							if (!exists) {
-								await fs.copyFile(sourcePath, destPath);
-								console.log(`Copied image: ${imageName}`);
+								// Check if next line exists and is a potential caption
+								let caption = "";
+								if (i + 1 < lines.length && lines[i + 1].trim() !== "" && !lines[i + 1].match(/!\[\[.*?\]\]/)) {
+									// Check if line after that is empty (indicating this is a caption)
+									if (i + 2 >= lines.length || lines[i + 2].trim() === "") {
+										caption = lines[i + 1].trim();
+										i++; // Skip the caption line
+									}
+								}
+
+								const assembledFigure = `{{<figure src="/${imageName}" caption="${caption}">}}\n`;
+								processedLines.push(assembledFigure);
+								console.log({ assembledFigure });
+							} catch (error) {
+								console.error(
+									`Error copying image ${imageName}:`,
+									error
+								);
+								processedLines.push(line); // Keep original line on error
 							}
-
-							const assembledFigure = `{{<figure src="/${imageName}" caption="">}}\n`;
-							content = content.replace(
-								match[0],
-								assembledFigure
-							);
-							console.log({ assembledFigure });
-						} catch (error) {
-							console.error(
-								`Error copying image ${imageName}:`,
-								error
-							);
+						} else {
+							console.error(`Image not found in vault: ${imageName}`);
+							processedLines.push(line); // Keep original line if image not found
 						}
 					} else {
-						console.error(`Image not found in vault: ${imageName}`);
+						processedLines.push(line);
 					}
+					i++;
 				}
+				
+				content = processedLines.join('\n');
 
 				//todo: figure out whether to put this in /posts or / at the root
-
-				// Remove lines starting with 'tags:' or two spaces
-				console.log(content);
-				content = content
-					.split("\n")
-					.filter(
-						(line) =>
-							!line.startsWith("tags:") && !line.startsWith("  ")
-					)
-					.join("\n");
 
 				// Replace hugoAliases with aliases if it exists
 				if (frontmatter && frontmatter.hugoAliases) {
